@@ -12,14 +12,12 @@ import (
 	"time"
 )
 
-type Parser struct {
+type Message struct {
+	Message   string
+	Timestamp time.Time
 }
 
-func NewParser() *Parser {
-	return &Parser{}
-}
-
-func (p *Parser) getContent(ctx context.Context, fileName string) (<-chan string, <-chan error) {
+func getContent(ctx context.Context, fileName string) (<-chan string, <-chan error) {
 	errChan := make(chan error)
 
 	resChan := make(chan string, 3)
@@ -42,13 +40,10 @@ func (p *Parser) getContent(ctx context.Context, fileName string) (<-chan string
 				if err == io.EOF {
 					close(resChan)
 					return
-				} else if err != nil {
+				}
+				if err != nil {
 					errChan <- err
 					continue
-				}
-				type Message struct {
-					Message   string
-					Timestamp time.Time
 				}
 				var message Message
 				err = json.Unmarshal([]byte(line), &message)
@@ -67,7 +62,7 @@ func (p *Parser) getContent(ctx context.Context, fileName string) (<-chan string
 	return resChan, errChan
 }
 
-func (p *Parser) saveContent(ctx context.Context, contentChan <-chan string, fileName string) <-chan error {
+func saveContent(ctx context.Context, contentChan <-chan string, fileName string) <-chan error {
 	errChan := make(chan error)
 	go func() {
 		file, err := os.Create(fileName)
@@ -87,8 +82,7 @@ func (p *Parser) saveContent(ctx context.Context, contentChan <-chan string, fil
 					w.Flush()
 					return
 				}
-				_, err := w.WriteString(chunk)
-				if err != nil {
+				if _, err := w.WriteString(chunk); err != nil {
 					errChan <- err
 				}
 			}
@@ -102,14 +96,13 @@ func (p *Parser) saveContent(ctx context.Context, contentChan <-chan string, fil
 func main() {
 	fileNames := map[string]string{"file1.txt": "out1.txt", "file2.txt": "out2.txt", "file3.txt": "out3.txt"}
 
-	parser := NewParser()
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	for inFileName, outFileName := range fileNames {
-		inChan, errChan := parser.getContent(ctx, inFileName)
+		inChan, errChan := getContent(ctx, inFileName)
 		outChan := make(chan string)
+		saveErrChan := saveContent(ctx, outChan, outFileName)
 		wg.Add(1)
-		saveErrChan := parser.saveContent(ctx, outChan, outFileName)
 		go func() {
 			outClosed := false
 			for {
@@ -118,7 +111,9 @@ func main() {
 					if more {
 						fmt.Println(res)
 						outChan <- res + "\n"
-					} else if !outClosed {
+						continue
+					}
+					if !outClosed {
 						outClosed = true
 						close(outChan)
 					}
