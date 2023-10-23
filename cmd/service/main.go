@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+type Message struct {
+	Message   string
+	Timestamp time.Time
+}
+
 type Parser struct {
 }
 
@@ -42,17 +47,15 @@ func (p *Parser) getContent(ctx context.Context, fileName string) (<-chan string
 				if err == io.EOF {
 					close(resChan)
 					return
-				} else if err != nil {
+				}
+				if err != nil {
 					errChan <- err
 					continue
 				}
-				type Message struct {
-					Message   string
-					Timestamp time.Time
-				}
+
 				var message Message
-				err = json.Unmarshal([]byte(line), &message)
-				if err != nil {
+
+				if err := json.Unmarshal([]byte(line), &message); err != nil {
 					errChan <- err
 					continue
 				}
@@ -87,8 +90,8 @@ func (p *Parser) saveContent(ctx context.Context, contentChan <-chan string, fil
 					w.Flush()
 					return
 				}
-				_, err := w.WriteString(chunk)
-				if err != nil {
+
+				if _, err := w.WriteString(chunk); err != nil {
 					errChan <- err
 				}
 			}
